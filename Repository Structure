@@ -1,0 +1,16 @@
+MinistryHealthDB/
+├── Code.sql                     # Main SQL script for database schema and sample data
+├── .gitignore                   # Specifies files to ignore in version control
+├── README.md                    # Project overview and usage instructions
+├── LICENSE                      # License information for the repository
+├── CONTRIBUTING.md              # Guidelines for contributing to the project
+├── CHANGELOG.md                 # (Optional) Tracks changes made to the project
+├── docs/                        # Documentation files
+│   ├── setup.md                 # Instructions for setting up the project
+│   ├── database_design.md       # Detailed explanation of the database design
+├── diagrams/                    # Folder for design and architectural diagrams
+│   └── Government Health System EER Diagram.pdf  # EER diagram of the database
+├── example_data/                # Folder for example data and database dumps
+│   └── sample_data.sql          # Example SQL data for testing
+└── tests/                       # Folder for testing and validation scripts
+    └── validation_queries.sql   # SQL scripts for validating database integrity
