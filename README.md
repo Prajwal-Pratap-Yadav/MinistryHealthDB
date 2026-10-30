@@ -15,6 +15,8 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-16A34A?style=flat-square">
 </p>
 
+**Review the project:** [code, tests, and evidence](docs/REVIEW_GUIDE.md).
+
 ## What this project demonstrates
 
 MinistryHealthDB is an **educational relational-database project** focused on turning a repeated departmental schema into a maintainable, normalized model.
@@ -45,7 +47,7 @@ mysql -u root -p ministry_health < sql/03_views.sql
 mysql -u root -p ministry_health < sql/04_validation.sql
 ```
 
-The validation script is read-only.
+The validation script is read-only. **Schema initialization drops and recreates demo tables; use a disposable database.**
 
 ## Why the maintained model is different
 
@@ -91,6 +93,8 @@ mysql -u root -p ministry_health < sql/04_validation.sql
 
 A healthy seeded database should have zero orphan counts, zero duplicate names/codes, no empty divisions, and populated reporting views.
 
+CI now verifies actual MySQL 8.4 foreign keys, uniqueness, null rejection, rollback behavior, and view totals. See the [real-engine validation contract](docs/validation.md); printed SQL counts alone do not fail a job.
+
 ## Data note
 
 Sample names are synthetic examples carried forward from the original project. They are not presented as current real-world ministry records.
@@ -126,3 +130,4 @@ The repository keeps the original `Code.sql`, EER diagram PDF, and documentation
 ## License
 
 MIT.
+
