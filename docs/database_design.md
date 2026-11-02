@@ -24,3 +24,17 @@ The original SQL repeated person and position columns across multiple division t
 - `utf8mb4` is used for text compatibility.
 
 The original `Code.sql` remains the historical artifact. New work should use `sql/`.
+
+## Directory row meaning
+
+`vw_ministry_directory` has one row per division appointment, with the role
+stored on `division_member`. A global `official_role` without a matching
+division appointment appears once with a null division and joining date.
+Matching global roles do not add another copy of a division appointment.
+The portfolio and secretary-office columns describe the person, not the
+role assigned within a division.
+
+Global roles and division roles may differ. For example, the synthetic seed
+gives Rohan a global Finance Minister role and a Deputy Secretary appointment
+in PAEM. The directory retains those as two distinct rows. Joining every
+global role to every division would mislabel appointments and multiply rows.

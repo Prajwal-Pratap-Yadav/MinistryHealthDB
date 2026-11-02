@@ -9,14 +9,26 @@ SELECT
     s.office_title AS secretary_office,
     d.division_code,
     d.division_name,
-    dm.joined_at
+    appointment.joined_at
 FROM official o
-JOIN official_role orl ON orl.official_id = o.official_id
-JOIN role r ON r.role_id = orl.role_id
+JOIN (
+    -- A division appointment carries its own role; do not cross join it with
+    -- every global role assigned to that person.
+    SELECT official_id, role_id, division_id, joined_at
+    FROM division_member
+    UNION ALL
+    -- Retain global roles that have no matching division appointment.
+    SELECT orl.official_id, orl.role_id, NULL, NULL
+    FROM official_role orl
+    WHERE NOT EXISTS (
+        SELECT 1 FROM division_member dm
+        WHERE dm.official_id = orl.official_id AND dm.role_id = orl.role_id
+    )
+) appointment ON appointment.official_id = o.official_id
+JOIN role r ON r.role_id = appointment.role_id
 LEFT JOIN minister m ON m.official_id = o.official_id
 LEFT JOIN secretary s ON s.official_id = o.official_id
-LEFT JOIN division_member dm ON dm.official_id = o.official_id
-LEFT JOIN division d ON d.division_id = dm.division_id;
+LEFT JOIN division d ON d.division_id = appointment.division_id;
 
 CREATE OR REPLACE VIEW vw_division_summary AS
 SELECT
