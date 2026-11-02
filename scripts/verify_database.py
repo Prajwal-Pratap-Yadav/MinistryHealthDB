@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 TABLES = (
     "official",
@@ -75,6 +75,36 @@ def verify(container: str, initialize: bool = False) -> dict:
     total_members = int(query("SELECT SUM(member_count) FROM vw_division_summary;")[0])
     if total_members != counts["division_member"]:
         raise AssertionError("Summary member counts must reconcile to the bridge table")
+    missing_appointments = int(
+        query("""
+        SELECT COUNT(*) FROM division_member dm
+        JOIN division d ON d.division_id = dm.division_id
+        JOIN role r ON r.role_id = dm.role_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM vw_ministry_directory v
+            WHERE v.official_id = dm.official_id
+              AND v.division_code = d.division_code AND v.role_name = r.role_name
+              AND v.joined_at = dm.joined_at
+        );
+    """)[0]
+    )
+    invented_appointments = int(
+        query("""
+        SELECT COUNT(*) FROM vw_ministry_directory v
+        WHERE v.division_code IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM division_member dm
+            JOIN division d ON d.division_id = dm.division_id
+            JOIN role r ON r.role_id = dm.role_id
+            WHERE dm.official_id = v.official_id
+              AND d.division_code = v.division_code AND r.role_name = v.role_name
+        );
+    """)[0]
+    )
+    if missing_appointments or invented_appointments:
+        raise AssertionError(
+            f"Directory role/division mismatch: {missing_appointments} missing, "
+            f"{invented_appointments} invented appointments"
+        )
     negative_cases = {
         "unknown_official_fk": (
             "INSERT INTO official_role VALUES(4294967295,1,CURRENT_DATE());",
@@ -100,6 +130,70 @@ def verify(container: str, initialize: bool = False) -> dict:
             raise AssertionError(
                 f"Constraint case {name} did not reject with MySQL error {code}: {result.stderr}"
             )
+    # One connection keeps all fixture changes in a rollback-only transaction.
+    # Exercise multiple roles/divisions instead of trusting populated row counts.
+    view_probe_rows = query("""
+        START TRANSACTION;
+        INSERT INTO official(full_name) VALUES('__ci_member__');
+        SET @member = LAST_INSERT_ID();
+        INSERT INTO official(full_name) VALUES('__ci_secretary__');
+        SET @secretary_official = LAST_INSERT_ID();
+        INSERT INTO secretary(official_id, minister_id, office_title)
+            SELECT @secretary_official, MIN(minister_id), 'Synthetic CI secretary'
+            FROM minister;
+        SET @secretary = LAST_INSERT_ID();
+        SELECT 'empty_secretary', direct_reports = 0
+            FROM vw_secretary_workload WHERE secretary_id = @secretary;
+        INSERT INTO role(role_name)
+            VALUES('__ci_role_a__'),('__ci_role_b__'),('__ci_global_role__');
+        SET @role_a = (SELECT role_id FROM role WHERE role_name = '__ci_role_a__');
+        SET @role_b = (SELECT role_id FROM role WHERE role_name = '__ci_role_b__');
+        SET @global_role = (SELECT role_id FROM role WHERE role_name = '__ci_global_role__');
+        INSERT INTO official_role VALUES
+            (@member, @role_a, CURRENT_DATE()),
+            (@member, @role_b, CURRENT_DATE()),
+            (@member, @global_role, CURRENT_DATE());
+        INSERT INTO division(division_code, division_name) VALUES
+            ('__CI_A__', '__ci_division_a__'),
+            ('__CI_B__', '__ci_division_b__'),
+            ('__CI_EMPTY__', '__ci_empty_division__');
+        SET @division_a = (SELECT division_id FROM division WHERE division_code = '__CI_A__');
+        SET @division_b = (SELECT division_id FROM division WHERE division_code = '__CI_B__');
+        INSERT INTO division_member VALUES
+            (@division_a, @member, @role_a, @secretary, CURRENT_DATE()),
+            (@division_b, @member, @role_b, @secretary, CURRENT_DATE());
+        SELECT 'directory_role_division_pairs',
+            COUNT(*) = 3
+            AND COUNT(CASE WHEN role_name = '__ci_role_a__'
+                AND division_code = '__CI_A__' THEN 1 END) = 1
+            AND COUNT(CASE WHEN role_name = '__ci_role_b__'
+                AND division_code = '__CI_B__' THEN 1 END) = 1
+            AND COUNT(CASE WHEN role_name = '__ci_global_role__'
+                AND division_code IS NULL AND joined_at IS NULL THEN 1 END) = 1
+            FROM vw_ministry_directory WHERE official_id = @member;
+        SELECT 'empty_division', member_count = 0
+            FROM vw_division_summary WHERE division_code = '__CI_EMPTY__';
+        SELECT 'one_membership_per_division', COUNT(*) = 2 AND SUM(member_count) = 2
+            FROM vw_division_summary WHERE division_code IN ('__CI_A__', '__CI_B__');
+        SELECT 'distinct_reports_across_divisions', direct_reports = 1
+            FROM vw_secretary_workload WHERE secretary_id = @secretary;
+        DELETE FROM secretary WHERE secretary_id = @secretary;
+        SELECT 'secretary_delete_preserves_memberships',
+            COUNT(*) = 2 AND COUNT(secretary_id) = 0
+            FROM division_member WHERE official_id = @member;
+        ROLLBACK;
+    """)
+    view_cases = {
+        "empty_secretary",
+        "directory_role_division_pairs",
+        "empty_division",
+        "one_membership_per_division",
+        "distinct_reports_across_divisions",
+        "secretary_delete_preserves_memberships",
+    }
+    observed = dict(row.split("\t") for row in view_probe_rows)
+    if set(observed) != view_cases or any(value != "1" for value in observed.values()):
+        raise AssertionError(f"Reporting view contracts failed: {observed}")
     after = {name: int(query(f"SELECT COUNT(*) FROM `{name}`;")[0]) for name in TABLES}
     if after != counts:
         raise AssertionError("Constraint probes must leave all seeded counts unchanged")
@@ -112,6 +206,8 @@ def verify(container: str, initialize: bool = False) -> dict:
         "row_counts": counts,
         "view_rows": views,
         "member_count_reconciles": True,
+        "directory_appointments_reconcile": True,
+        "passed_view_cases": sorted(view_cases),
         "rejected_constraint_cases": list(negative_cases),
         "transaction_probes_left_seed_unchanged": True,
         "view_recreation": "passed",

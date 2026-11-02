@@ -8,6 +8,11 @@ MySQL8.4 container, loads schema/seed/views, and runs
 |---|---|
 | Seven core tables and three views are populated | Actual engine row counts |
 | Division membership is counted once | Summary totals reconcile to the bridge table |
+| Directory roles match actual division appointments | Seeded membership reconciliation, with no missing or invented role/division pairs |
+| Multiple roles keep their correct divisions | Transactional fixture with two division roles and one global-only role |
+| Empty divisions and secretaries remain visible | Explicit zero-count fixtures |
+| Staff in two divisions count as one direct report | Distinct-person workload fixture |
+| Deleting a secretary retains memberships | Actual `ON DELETE SET NULL` probe |
 | Relationships reject missing people | Foreign-key error1452 |
 | Names and composite role assignments are unique | Duplicate-key error1062 |
 | Official names are mandatory | Null-value error1048 |
