@@ -17,7 +17,7 @@ jobs:
       MYSQL_PWD: disposable-ci-only
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Load demo SQL and verify real engine constraints
